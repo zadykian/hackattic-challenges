@@ -1,7 +1,7 @@
 ﻿using System.Configuration;
 using System.Text.Json;
 
-namespace Hackattic.Challenges.Configuration;
+namespace Hackattic.Challenges.ApiAccess;
 
 internal static class AccessToken
 {

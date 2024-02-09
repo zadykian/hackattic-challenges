@@ -1,84 +1,59 @@
-using System.Text.Json;
 using System.Text.Json.Serialization;
-using FluentAssertions;
-using Hackattic.Challenges.Configuration;
-using NUnit.Framework;
+
+// ReSharper disable UnusedType.Global
+// ReSharper disable UnusedAutoPropertyAccessor.Local
 
 namespace Hackattic.Challenges;
 
-public sealed class HelpMeUnpack : IDisposable
+public sealed class HelpMeUnpack : IChallenge<ProblemSet, Solution>
 {
-    private readonly HttpClient HttpClient = new()
-    {
-        BaseAddress = new("https://hackattic.com/challenges/")
-    };
+    public string Name => "help_me_unpack";
 
-    [Test]
-    [CancelAfter(10_000)]
-    public async Task Run()
-    {
-        var accessToken = AccessToken.Value();
-        var problemSetResponse = await HttpClient.GetAsync($"help_me_unpack/problem?access_token={accessToken}");
-        problemSetResponse.EnsureSuccessStatusCode();
-
-        var responseContent = await problemSetResponse.Content.ReadAsStreamAsync();
-        var problemSet = await JsonSerializer.DeserializeAsync<ProblemSet>(responseContent);
-        problemSet.Bytes.Should().NotBeNullOrWhiteSpace();
-
-        var solution = await Solve(problemSet);
-
-        var submission = await HttpClient.PostAsync(
-            $"help_me_unpack/solve?access_token={accessToken}",
-            new StringContent(JsonSerializer.Serialize(solution))
-        );
-
-        submission.EnsureSuccessStatusCode();
-        var submissionResponseContent = await submission.Content.ReadAsStreamAsync();
-        var submissionResponse = await JsonSerializer.DeserializeAsync<JsonElement>(submissionResponseContent);
-
-        var rejectionReason = submissionResponse.TryGetProperty("rejected", out var rejected)
-            ? rejected.GetString()
-            : string.Empty;
-
-        rejectionReason.Should().BeNullOrWhiteSpace();
-    }
-
-    private static async Task<Solution> Solve(ProblemSet problemSet)
+    async Task<Solution> IChallenge<ProblemSet, Solution>.Solve(ProblemSet problemSet)
     {
         await Task.CompletedTask;
         var decodedBytes = Convert.FromBase64String(problemSet.Bytes);
-        return default;
+
+        var intBytes = decodedBytes[..4];
+
+        return new()
+        {
+            Int = 0,
+            UnsignedInt = 0,
+            Short = 0,
+            Float = 0,
+            Double = 0,
+            BigEndianDouble = 0
+        };
     }
+}
 
-    void IDisposable.Dispose() => HttpClient.Dispose();
+public readonly struct ProblemSet
+{
+    [JsonConstructor]
+    public ProblemSet(string bytes) => Bytes = bytes;
 
-    private readonly struct ProblemSet
-    {
-        [JsonConstructor]
-        public ProblemSet(string bytes) => Bytes = bytes;
+    [JsonPropertyName("bytes")]
+    public string Bytes { get; }
+}
 
-        [JsonPropertyName("bytes")]
-        public string Bytes { get; }
-    }
+public readonly struct Solution
+{
+    [JsonPropertyName("int")]
+    public required int Int { get; init; }
 
-    private readonly struct Solution
-    {
-        [JsonPropertyName("int")]
-        public int Int { get; init; }
+    [JsonPropertyName("uint")]
+    public required uint UnsignedInt { get; init; }
 
-        [JsonPropertyName("uint")]
-        public uint UnsignedInt { get; init; }
+    [JsonPropertyName("short")]
+    public required short Short { get; init; }
 
-        [JsonPropertyName("short")]
-        public short Short { get; init; }
+    [JsonPropertyName("float")]
+    public required float Float { get; init; }
 
-        [JsonPropertyName("float")]
-        public float Float { get; init; }
+    [JsonPropertyName("double")]
+    public required double Double { get; init; }
 
-        [JsonPropertyName("double")]
-        public double Double { get; init; }
-
-        [JsonPropertyName("big_endian_double")]
-        public double BigEndianDouble { get; init; }
-    }
+    [JsonPropertyName("big_endian_double")]
+    public required double BigEndianDouble { get; init; }
 }
