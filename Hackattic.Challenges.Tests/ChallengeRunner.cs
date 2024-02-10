@@ -6,13 +6,14 @@ using NUnit.Framework;
 
 namespace Hackattic.Challenges;
 
-public interface IChallenge;
-
-public interface IChallenge<in TProblemSet, TSolution> : IChallenge
+public interface IChallenge
 {
     string Name { get; }
+}
 
-    ValueTask<TSolution> Solve(TProblemSet problemSet);
+public interface IChallenge<in TProblemSet, out TSolution> : IChallenge
+{
+    TSolution Solve(TProblemSet problemSet);
 }
 
 public sealed class ChallengeRunner : IDisposable
@@ -51,7 +52,7 @@ public sealed class ChallengeRunner : IDisposable
         var responseContent = await problemSetResponse.Content.ReadAsStreamAsync();
         var problemSet = await JsonSerializer.DeserializeAsync<TProblemSet>(responseContent);
 
-        var solution = await challenge.Solve(problemSet!);
+        var solution = challenge.Solve(problemSet!);
 
         var submission = await httpClient.PostAsync(
             $"{challenge.Name}/solve?access_token={accessToken}",
@@ -71,19 +72,19 @@ public sealed class ChallengeRunner : IDisposable
             .BeNullOrWhiteSpace(because: "submission should be accepted");
     }
 
-    private static IEnumerable<IChallenge> LoadChallenges()
+    private static IEnumerable<TestCaseData> LoadChallenges()
         => Assembly
             .GetExecutingAssembly()
             .GetTypes()
             .Where(type =>
                 !type.IsAbstract
-                && type.GetInterfaces().Any(intType =>
-                    intType.IsGenericType
-                    && intType.GetGenericTypeDefinition() == typeof(IChallenge<,>)
-                )
+                && type
+                    .GetInterfaces()
+                    .Any(intType => intType.IsGenericType && intType.GetGenericTypeDefinition() == typeof(IChallenge<,>))
             )
             .Select(Activator.CreateInstance)
-            .Cast<IChallenge>();
+            .Cast<IChallenge>()
+            .Select(challenge => new TestCaseData(challenge) { TestName = challenge.Name });
 
     void IDisposable.Dispose() => httpClient.Dispose();
 }

@@ -1,34 +1,62 @@
 using System.Text.Json.Serialization;
 
-// ReSharper disable UnusedType.Global
-// ReSharper disable UnusedAutoPropertyAccessor.Global
+// ReSharper disable UnusedType.Local
+// ReSharper disable UnusedAutoPropertyAccessor.Local
 
 namespace Hackattic.Challenges;
 
-public sealed class HelpMeUnpack : IChallenge<ProblemSet, Solution>
+file sealed class HelpMeUnpack : IChallenge<ProblemSet, Solution>
 {
     public string Name => "help_me_unpack";
 
-    public async ValueTask<Solution> Solve(ProblemSet problemSet)
+    public Solution Solve(ProblemSet problemSet)
     {
-        await ValueTask.CompletedTask;
         var decodedBytes = Convert.FromBase64String(problemSet.Bytes);
 
-        var intBytes = decodedBytes[..4];
+        Span<byte> bigEndianDoubleBuffer = stackalloc byte[8];
+        decodedBytes.AsSpan(22, 8).CopyTo(bigEndianDoubleBuffer);
+        bigEndianDoubleBuffer.Reverse();
 
         return new()
         {
-            Int = 0,
-            UnsignedInt = 0,
-            Short = 0,
-            Float = 0,
-            Double = 0,
-            BigEndianDouble = 0
+            Int             = ToInt32(new(decodedBytes, 0, 4)),
+            UnsignedInt     = ToUInt32(new(decodedBytes, 4, 4)),
+            Short           = ToInt16(new(decodedBytes, 8, 2)),
+            Float           = ToFloat(new(decodedBytes, 10, 4)),
+            Double          = ToDouble(new(decodedBytes, 14, 8)),
+            BigEndianDouble = ToDouble(bigEndianDoubleBuffer)
         };
+    }
+
+    private static int ToInt32(ReadOnlySpan<byte> bytes)
+    {
+        var intValue = bytes[0] | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24;
+        
+        return default; // todo
+    }
+
+    private static uint ToUInt32(ReadOnlySpan<byte> bytes)
+    {
+        return default; // todo
+    }
+
+    private static short ToInt16(ReadOnlySpan<byte> bytes)
+    {
+        return default; // todo
+    }
+
+    private static float ToFloat(ReadOnlySpan<byte> bytes)
+    {
+        return default; // todo
+    }
+
+    private static float ToDouble(ReadOnlySpan<byte> bytes)
+    {
+        return default; // todo
     }
 }
 
-public readonly struct ProblemSet
+file readonly struct ProblemSet
 {
     [JsonConstructor]
     public ProblemSet(string bytes) => Bytes = bytes;
@@ -37,7 +65,7 @@ public readonly struct ProblemSet
     public string Bytes { get; }
 }
 
-public readonly struct Solution
+file readonly struct Solution
 {
     [JsonPropertyName("int")]
     public required int Int { get; init; }
