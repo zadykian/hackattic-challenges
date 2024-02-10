@@ -12,11 +12,14 @@ public interface IChallenge<in TProblemSet, TSolution> : IChallenge
 {
     string Name { get; }
 
-    Task<TSolution> Solve(TProblemSet problemSet);
+    ValueTask<TSolution> Solve(TProblemSet problemSet);
 }
 
 public sealed class ChallengeRunner : IDisposable
 {
+    private static readonly MethodInfo RunImplMethodInfo
+        = typeof(ChallengeRunner).GetMethod(nameof(RunImpl), BindingFlags.NonPublic | BindingFlags.Instance)!;
+
     private readonly HttpClient httpClient = new()
     {
         BaseAddress = new("https://hackattic.com/challenges/")
@@ -24,7 +27,18 @@ public sealed class ChallengeRunner : IDisposable
 
     [TestCaseSource(nameof(LoadChallenges))]
     [CancelAfter(10_000)]
-    public async Task Run<TProblemSet, TSolution>(IChallenge<TProblemSet, TSolution> challenge)
+    public Task Run(IChallenge challenge)
+    {
+        var genericArgs = challenge
+            .GetType()
+            .GetInterfaces()
+            .First(intType => intType.IsGenericType && intType.GetGenericTypeDefinition() == typeof(IChallenge<,>))
+            .GetGenericArguments();
+
+        return (Task) RunImplMethodInfo.MakeGenericMethod(genericArgs).Invoke(this, [ challenge ])!;
+    }
+
+    private async Task RunImpl<TProblemSet, TSolution>(IChallenge<TProblemSet, TSolution> challenge)
     {
         var accessToken = AccessToken.Value();
 
@@ -52,7 +66,9 @@ public sealed class ChallengeRunner : IDisposable
             ? rejected.GetString()
             : string.Empty;
 
-        rejectionReason.Should().BeNullOrWhiteSpace();
+        rejectionReason
+            .Should()
+            .BeNullOrWhiteSpace(because: "submission should be accepted");
     }
 
     private static IEnumerable<IChallenge> LoadChallenges()

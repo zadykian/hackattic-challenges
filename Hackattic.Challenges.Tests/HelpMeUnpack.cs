@@ -1,7 +1,7 @@
 using System.Text.Json.Serialization;
 
 // ReSharper disable UnusedType.Global
-// ReSharper disable UnusedAutoPropertyAccessor.Local
+// ReSharper disable UnusedAutoPropertyAccessor.Global
 
 namespace Hackattic.Challenges;
 
@@ -9,9 +9,9 @@ public sealed class HelpMeUnpack : IChallenge<ProblemSet, Solution>
 {
     public string Name => "help_me_unpack";
 
-    async Task<Solution> IChallenge<ProblemSet, Solution>.Solve(ProblemSet problemSet)
+    public async ValueTask<Solution> Solve(ProblemSet problemSet)
     {
-        await Task.CompletedTask;
+        await ValueTask.CompletedTask;
         var decodedBytes = Convert.FromBase64String(problemSet.Bytes);
 
         var intBytes = decodedBytes[..4];
