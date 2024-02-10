@@ -48,7 +48,6 @@ public sealed class ChallengeRunner : IDisposable
         );
 
         problemSetResponse.EnsureSuccessStatusCode();
-
         var responseContent = await problemSetResponse.Content.ReadAsStreamAsync();
         var problemSet = await JsonSerializer.DeserializeAsync<TProblemSet>(responseContent);
 
