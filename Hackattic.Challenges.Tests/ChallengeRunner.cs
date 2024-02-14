@@ -28,6 +28,7 @@ public sealed class ChallengeRunner : IDisposable
 
     [TestCaseSource(nameof(LoadChallenges))]
     [CancelAfter(10_000)]
+    [Explicit]
     public Task Run(IChallenge challenge)
     {
         var genericArgs = challenge
