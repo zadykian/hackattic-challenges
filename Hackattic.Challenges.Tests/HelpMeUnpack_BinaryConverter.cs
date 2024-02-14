@@ -1,4 +1,31 @@
-﻿namespace Hackattic.Challenges;
+﻿using System.Numerics;
+using System.Runtime.InteropServices;
+
+namespace Hackattic.Challenges;
+
+internal readonly ref struct BitMap
+{
+    private readonly ReadOnlySpan<byte> bytes;
+
+    public BitMap(ReadOnlySpan<byte> bytes) => this.bytes = bytes;
+
+    public static BitMap operator &(BitMap left, BitMap right)
+    {
+        if (left.bytes.Length != right.bytes.Length)
+        {
+            throw new InvalidOperationException();
+        }
+
+        Span<byte> newMap = new byte[left.bytes.Length];
+
+        for (var i = 0; i < left.bytes.Length; i++)
+        {
+            newMap[i] = (byte) (left.bytes[i] & right.bytes[i]);
+        }
+
+        return new(newMap);
+    }
+}
 
 internal static class HelpMeUnpack_BinaryConverter
 {
@@ -79,5 +106,44 @@ internal static class HelpMeUnpack_BinaryConverter
         // s:1, e:11, m: 52
         
         return default; // todo
+    }
+
+    private static TNumber ToFloatingPoint<TNumber>(ReadOnlySpan<byte> bytes)
+        where TNumber : IBinaryFloatingPointIeee754<TNumber>
+    {
+    }
+
+    private static TNumber GetMantissaFraction<TNumber>(
+        ReadOnlySpan<byte> bytes,
+        int mantissaBitsCount
+    ) where TNumber : IBinaryFloatingPointIeee754<TNumber>
+    {
+        // 1. Read mantissa as Int32 value from last 23 bits of bytes [ ww, xx, yy, zz ]
+        var mantissaBin = (bytes[2] & 0b0111_1111) << 16 | bytes[1] << 8 | bytes[0] << 0 ;
+
+
+        if (mantissaBin == 0)
+        {
+            return TNumber.Zero;
+        }
+
+        var result = TNumber.Zero;
+
+        // 2. Interpret mantissa's binary representation as a sum:
+        // 1/2 + 1/4 + 1/8 + ... + 1 / 2^n
+
+        var mask = 1 << (mantissaBitsCount - 1);
+
+        for (var i = 0; i < mantissaBitsCount; i++)
+        {
+            if ((mantissaBin & mask) == mask)
+            {
+                var divider = (TNumber) Convert.ChangeType(2 << i, typeof(TNumber));
+                result += TNumber.One / divider;
+            }
+            mask >>= 1;
+        }
+
+        return result;
     }
 }
