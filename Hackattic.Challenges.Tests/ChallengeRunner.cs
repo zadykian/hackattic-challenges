@@ -11,9 +11,9 @@ public interface IChallenge
     string Name { get; }
 }
 
-public interface IChallenge<in TProblemSet, out TSolution> : IChallenge
+public interface IChallenge<in TProblemSet, TSolution> : IChallenge
 {
-    TSolution Solve(TProblemSet problemSet);
+    ValueTask<TSolution> Solve(TProblemSet problemSet, CancellationToken token = default);
 }
 
 public sealed class ChallengeRunner : IDisposable
@@ -29,7 +29,7 @@ public sealed class ChallengeRunner : IDisposable
     [TestCaseSource(nameof(LoadChallenges))]
     [CancelAfter(10_000)]
     [Explicit]
-    public Task Run(IChallenge challenge)
+    public Task Run(IChallenge challenge, CancellationToken cancellationToken)
     {
         var genericArgs = challenge
             .GetType()
@@ -37,31 +37,44 @@ public sealed class ChallengeRunner : IDisposable
             .First(intType => intType.IsGenericType && intType.GetGenericTypeDefinition() == typeof(IChallenge<,>))
             .GetGenericArguments();
 
-        return (Task) RunImplMethodInfo.MakeGenericMethod(genericArgs).Invoke(this, [ challenge ])!;
+        return (Task) RunImplMethodInfo.MakeGenericMethod(genericArgs).Invoke(this, [ challenge, cancellationToken ])!;
     }
 
-    private async Task RunImpl<TProblemSet, TSolution>(IChallenge<TProblemSet, TSolution> challenge)
+    private async Task RunImpl<TProblemSet, TSolution>(
+        IChallenge<TProblemSet, TSolution> challenge,
+        CancellationToken cancellationToken
+    )
     {
         var accessToken = AccessToken.Value();
 
         var problemSetResponse = await httpClient.GetAsync(
-            $"{challenge.Name}/problem?access_token={accessToken}"
+            $"{challenge.Name}/problem?access_token={accessToken}",
+            cancellationToken
         );
 
         problemSetResponse.EnsureSuccessStatusCode();
-        var responseContent = await problemSetResponse.Content.ReadAsStreamAsync();
-        var problemSet = await JsonSerializer.DeserializeAsync<TProblemSet>(responseContent);
+        var responseContent = await problemSetResponse.Content.ReadAsStreamAsync(cancellationToken);
 
-        var solution = challenge.Solve(problemSet!);
+        var problemSet = await JsonSerializer.DeserializeAsync<TProblemSet>(
+            responseContent,
+            cancellationToken: cancellationToken
+        );
+
+        var solution = await challenge.Solve(problemSet!, cancellationToken);
 
         var submission = await httpClient.PostAsync(
             $"{challenge.Name}/solve?access_token={accessToken}",
-            new StringContent(JsonSerializer.Serialize(solution))
+            new StringContent(JsonSerializer.Serialize(solution)),
+            cancellationToken
         );
 
         submission.EnsureSuccessStatusCode();
-        var submissionResponseContent = await submission.Content.ReadAsStreamAsync();
-        var submissionResponse = await JsonSerializer.DeserializeAsync<JsonElement>(submissionResponseContent);
+        var submissionResponseContent = await submission.Content.ReadAsStreamAsync(cancellationToken);
+
+        var submissionResponse = await JsonSerializer.DeserializeAsync<JsonElement>(
+            submissionResponseContent,
+            cancellationToken: cancellationToken
+        );
 
         var rejectionReason = submissionResponse.TryGetProperty("rejected", out var rejected)
             ? rejected.GetString()

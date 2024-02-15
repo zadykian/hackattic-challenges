@@ -12,7 +12,7 @@ file sealed class HelpMeUnpack : IChallenge<ProblemSet, Solution>
 {
     public string Name => "help_me_unpack";
 
-    public Solution Solve(ProblemSet problemSet)
+    public ValueTask<Solution> Solve(ProblemSet problemSet, CancellationToken token = default)
     {
         var decodedBytes = Convert.FromBase64String(problemSet.Bytes);
 
@@ -20,7 +20,7 @@ file sealed class HelpMeUnpack : IChallenge<ProblemSet, Solution>
         decodedBytes.AsSpan(24, 8).CopyTo(bigEndianDoubleBuffer);
         bigEndianDoubleBuffer.Reverse();
 
-        return new()
+        var solution = new Solution
         {
             Int = ToInteger<int>(new(decodedBytes, 0, 4)),
             UInt = ToInteger<uint>(new(decodedBytes, 4, 4)),
@@ -29,6 +29,8 @@ file sealed class HelpMeUnpack : IChallenge<ProblemSet, Solution>
             Double = ToFloat<double>(new(decodedBytes, 16, 8), Float64_Exponent_Bits),
             BigEndianDouble = ToFloat<double>(bigEndianDoubleBuffer, Float64_Exponent_Bits)
         };
+
+        return ValueTask.FromResult(solution);
     }
 }
 
