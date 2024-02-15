@@ -1,4 +1,4 @@
-﻿namespace Hackattic.Challenges;
+﻿namespace Hackattic.Challenges.Common;
 
 internal static class Extensions
 {

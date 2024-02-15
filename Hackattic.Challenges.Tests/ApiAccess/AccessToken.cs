@@ -1,5 +1,6 @@
 ﻿using System.Configuration;
 using System.Text.Json;
+using Hackattic.Challenges.Common;
 
 namespace Hackattic.Challenges.ApiAccess;
 
