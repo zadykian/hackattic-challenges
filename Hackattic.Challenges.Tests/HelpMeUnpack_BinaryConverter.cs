@@ -1,149 +1,108 @@
 ﻿using System.Numerics;
-using System.Runtime.InteropServices;
 
 namespace Hackattic.Challenges;
 
-internal readonly ref struct BitMap
-{
-    private readonly ReadOnlySpan<byte> bytes;
-
-    public BitMap(ReadOnlySpan<byte> bytes) => this.bytes = bytes;
-
-    public static BitMap operator &(BitMap left, BitMap right)
-    {
-        if (left.bytes.Length != right.bytes.Length)
-        {
-            throw new InvalidOperationException();
-        }
-
-        Span<byte> newMap = new byte[left.bytes.Length];
-
-        for (var i = 0; i < left.bytes.Length; i++)
-        {
-            newMap[i] = (byte) (left.bytes[i] & right.bytes[i]);
-        }
-
-        return new(newMap);
-    }
-}
-
 internal static class HelpMeUnpack_BinaryConverter
 {
-    public static int ToInt32(ReadOnlySpan<byte> bytes)
-        => bytes[0] | bytes[1] << 8 | bytes[2] << 16 | bytes[3] << 24;
-
-    public static uint ToUInt32(ReadOnlySpan<byte> bytes)
-        => (uint) ToInt32(bytes);
-
-    public static short ToInt16(ReadOnlySpan<byte> bytes)
-        => (short) (bytes[0] | bytes[1] << 8);
-
-    public static float ToFloat(ReadOnlySpan<byte> bytes)
+    public static TInteger ToInteger<TInteger>(ReadOnlySpan<byte> bytes)
+        where TInteger : IBinaryInteger<TInteger>
     {
-        // s:1, e:8, m:23
+        var result = TInteger.Zero;
 
-        var sign = (bytes[3] & 0b1000_0000) == 0b0 ? 1 : -1;
-
-        var exponentBin =
-            (bytes[3] & 0b0111_1111) << 1 | // 7 least significant bits from 4th byte
-            (bytes[2] & 0b1000_0000) >> 7 ; // 1 most significant bit from 3rd byte
-
-        var mantissaFraction = GetMantissaFractionFloat(bytes);
-
-        if (exponentBin == 0b1111_1111)
+        for (var i = 0; i < bytes.Length; i++)
         {
-            return mantissaFraction == 0
-                ? sign / 0f // +- Infinity
-                : 0f / 0f;  // NaN
-        }
-
-        int exponent;
-        float mantissa;
-        if (exponentBin is not 0b0000_0000) // Normalized
-        {
-            exponent = exponentBin - 127;
-            mantissa = 1 + mantissaFraction;
-        }
-        else
-        {
-            exponent = 1 - 127;
-            mantissa = mantissaFraction;
-        }
-
-        return sign * mantissa * (float) Math.Pow(2, exponent);
-    }
-
-    private static float GetMantissaFractionFloat(ReadOnlySpan<byte> bytes)
-    {
-        // 1. Read mantissa as Int32 value from last 23 bits of bytes [ ww, xx, yy, zz ]
-        var mantissaBin = (bytes[2] & 0b0111_1111) << 16 | bytes[1] << 8 | bytes[0] << 0 ;
-
-        float result = 0;
-
-        if (mantissaBin == 0)
-        {
-            return result;
-        }
-
-        // 2. Interpret mantissa's binary representation as a sum:
-        // 1/2 + 1/4 + 1/8 + ... + 1 / 2^n
-        
-        var mask = 1 << 22;
-        for (var i = 0; i < 23; i++)
-        {
-            if ((mantissaBin & mask) == mask)
-            {
-                result += 1f / (2 << i);
-            }
-            mask >>= 1;
+            result |= TInteger.CreateChecked(bytes[i]) << (i * 8);
         }
 
         return result;
     }
 
-    public static double ToDouble(ReadOnlySpan<byte> bytes)
+    public static unsafe TFloat ToFloat<TFloat>(ReadOnlySpan<byte> bytes, int exponentBitsCount)
+        where TFloat : unmanaged, IBinaryFloatingPointIeee754<TFloat>
     {
-        // s:1, e:11, m: 52
+        if (bytes.Length < sizeof(TFloat))
+        {
+            throw new ArgumentException($"Span is too small to represent a value of type {typeof(TFloat)}", nameof(bytes));
+        }
+
+        if (sizeof(TFloat) > sizeof(Int128))
+        {
+            throw new NotSupportedException();
+        }
+
+        var sign = (bytes[^1] & 0b1000_0000) == 0b0 ? TFloat.One : TFloat.NegativeOne;
+
+        var mantissaBitsCount = sizeof(TFloat) * 8 - (1 + exponentBitsCount);
         
-        return default; // todo
+        var exponentMask = (Int128.One << exponentBitsCount) - 1;
+        var exponentBin = (ToInteger<Int128>(bytes) >>> mantissaBitsCount) & exponentMask;
+
+        var mantissaFraction = GetMantissaFraction<TFloat>(bytes, mantissaBitsCount);
+
+        if (exponentBin == exponentMask) // exponentBin == 0b11..1111
+        {
+            return mantissaFraction == TFloat.Zero
+                ? sign / TFloat.Zero // +- Infinity
+                : TFloat.Zero / TFloat.Zero; // NaN
+        }
+
+        if (exponentBin == Int128.Zero && mantissaFraction == TFloat.Zero)
+        {
+            return sign * TFloat.Zero;
+        }
+
+        TFloat exponent;
+        TFloat mantissa;
+
+        // float16: exp = 05 bits -> bias = 2^(05-1) - 1 = 15
+        // float32: exp = 08 bits -> bias = 2^(08-1) - 1 = 127
+        // float64: exp = 11 bits -> bias = 2^(11-1) - 1 = 1023
+        var bias = (Int128.One << (exponentBitsCount - 1)) - 1;
+
+        if (exponentBin != 0) // Normalized
+        {
+            exponent = TFloat.CreateChecked(exponentBin - bias);
+            mantissa = TFloat.One + mantissaFraction;
+        }
+        else
+        {
+            exponent = TFloat.CreateChecked(1 - bias);
+            mantissa = mantissaFraction;
+        }
+
+        return sign * mantissa * TFloat.Exp2(exponent);
     }
-
-    private static TNumber ToFloatingPoint<TNumber>(ReadOnlySpan<byte> bytes)
-        where TNumber : IBinaryFloatingPointIeee754<TNumber>
+    
+    private static TFloat GetMantissaFraction<TFloat>(ReadOnlySpan<byte> bytes, int mantissaBitsCount)
+        where TFloat : IBinaryFloatingPointIeee754<TFloat>
     {
-    }
+        // 1. Read mantissa as UInt128 value from last N bits of bytes
 
-    private static TNumber GetMantissaFraction<TNumber>(
-        ReadOnlySpan<byte> bytes,
-        int mantissaBitsCount
-    ) where TNumber : IBinaryFloatingPointIeee754<TNumber>
-    {
-        // 1. Read mantissa as Int32 value from last 23 bits of bytes [ ww, xx, yy, zz ]
-        var mantissaBin = (bytes[2] & 0b0111_1111) << 16 | bytes[1] << 8 | bytes[0] << 0 ;
-
-
+        var mantissaMask = (UInt128.One << mantissaBitsCount) - 1;
+        var mantissaBin = ToInteger<UInt128>(bytes) & mantissaMask;
+    
         if (mantissaBin == 0)
         {
-            return TNumber.Zero;
+            return TFloat.Zero;
         }
-
-        var result = TNumber.Zero;
-
+    
+        var result = TFloat.Zero;
+    
         // 2. Interpret mantissa's binary representation as a sum:
         // 1/2 + 1/4 + 1/8 + ... + 1 / 2^n
-
-        var mask = 1 << (mantissaBitsCount - 1);
-
+    
+        var singleBitMask = UInt128.One << (mantissaBitsCount - 1);
+    
         for (var i = 0; i < mantissaBitsCount; i++)
         {
-            if ((mantissaBin & mask) == mask)
+            if ((mantissaBin & singleBitMask) == singleBitMask)
             {
-                var divider = (TNumber) Convert.ChangeType(2 << i, typeof(TNumber));
-                result += TNumber.One / divider;
+                var powerOfTwo = TFloat.NegativeOne * TFloat.CreateChecked(i + 1);
+                result += TFloat.Exp2(powerOfTwo);
             }
-            mask >>= 1;
+            singleBitMask >>= 1;
         }
-
+    
         return result;
     }
 }

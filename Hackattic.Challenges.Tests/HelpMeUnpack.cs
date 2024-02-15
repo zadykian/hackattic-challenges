@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 namespace Hackattic.Challenges;
 
 using static HelpMeUnpack_BinaryConverter;
+using static HelpMeUnpack_Constants;
 
 file sealed class HelpMeUnpack : IChallenge<ProblemSet, Solution>
 {
@@ -21,12 +22,12 @@ file sealed class HelpMeUnpack : IChallenge<ProblemSet, Solution>
 
         return new()
         {
-            Int = ToInt32(new(decodedBytes, 0, 4)),
-            UInt = ToUInt32(new(decodedBytes, 4, 4)),
-            Short = ToInt16(new(decodedBytes, 8, 2)),
-            Float = ToFloat(new(decodedBytes, 10, 4)),
-            Double = ToDouble(new(decodedBytes, 14, 8)),
-            BigEndianDouble = ToDouble(bigEndianDoubleBuffer)
+            Int = ToInteger<int>(new(decodedBytes, 0, 4)),
+            UInt = ToInteger<uint>(new(decodedBytes, 4, 4)),
+            Short = ToInteger<short>(new(decodedBytes, 8, 2)),
+            Float = ToFloat<float>(new(decodedBytes, 10, 4), Float32_Exponent_Bits),
+            Double = ToFloat<double>(new(decodedBytes, 14, 8), Float64_Exponent_Bits),
+            BigEndianDouble = ToFloat<double>(bigEndianDoubleBuffer, Float64_Exponent_Bits)
         };
     }
 }
