@@ -4,6 +4,8 @@ using FluentAssertions;
 using Hackattic.Challenges.ApiAccess;
 using NUnit.Framework;
 
+// ReSharper disable SuspiciousTypeConversion.Global
+
 namespace Hackattic.Challenges;
 
 public interface IChallenge
@@ -29,7 +31,7 @@ public sealed class ChallengeRunner : IDisposable
     [TestCaseSource(nameof(LoadChallenges))]
     [CancelAfter(10_000)]
     [Explicit]
-    public Task Run(IChallenge challenge, CancellationToken cancellationToken)
+    public async Task Run(IChallenge challenge, CancellationToken cancellationToken)
     {
         var genericArgs = challenge
             .GetType()
@@ -37,7 +39,18 @@ public sealed class ChallengeRunner : IDisposable
             .First(intType => intType.IsGenericType && intType.GetGenericTypeDefinition() == typeof(IChallenge<,>))
             .GetGenericArguments();
 
-        return (Task) RunImplMethodInfo.MakeGenericMethod(genericArgs).Invoke(this, [ challenge, cancellationToken ])!;
+        try
+        {
+            await (Task) RunImplMethodInfo.MakeGenericMethod(genericArgs).Invoke(this, [ challenge, cancellationToken ])!;
+        }
+        finally
+        {
+            switch (challenge)
+            {
+                case IDisposable disposable : disposable.Dispose(); break;
+                case IAsyncDisposable disposable : await disposable.DisposeAsync(); break;
+            }
+        }
     }
 
     private async Task RunImpl<TProblemSet, TSolution>(
